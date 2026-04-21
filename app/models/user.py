@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum, Numeric
 from sqlalchemy.sql import func
 from app.database.connection import Base
 import enum
@@ -22,18 +22,21 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     age = Column(Integer, nullable=False)
-    weight_kg = Column(Float, nullable=False)
-    height_cm = Column(Float, nullable=False)
-    sex = Column(Enum(SexEnum), nullable=False)
-    activity_factor = Column(Float, nullable=False, default=1.2)
-    goal = Column(Enum(GoalEnum), nullable=False, default=GoalEnum.MAINTAIN)
+    weight_kg = Column(Numeric(5, 2), nullable=False)
+    height_cm = Column(Numeric(5, 2), nullable=False)
+    sex = Column(Enum(SexEnum, name='sex_enum'), nullable=False)
+    activity_factor = Column(Numeric(3, 2), nullable=False, default=1.2)
+    goal = Column(Enum(GoalEnum, name='goal_enum'),
+                  nullable=False, default=GoalEnum.MAINTAIN)
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
+
+    last_login = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
 
     def calculate_daily_calories(self):
-        """Рассчитать дневную норму калорий"""
         if self.sex == SexEnum.MALE:
             bmr = 10 * self.weight_kg + 6.25 * self.height_cm - 5 * self.age + 5
         else:
