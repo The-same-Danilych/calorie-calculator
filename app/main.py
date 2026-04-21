@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth, foods, meals
-from app.database.connection import engine
-from app.models import Base
+from app.database.connection import engine, Base
 
 Base.metadata.create_all(bind=engine)
 

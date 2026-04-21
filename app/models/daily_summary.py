@@ -7,7 +7,7 @@ class DailySummary(Base):
     __tablename__ = "daily_summaries"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("core.users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     date = Column(Date, nullable=False)
 
     # Типы Numeric, а не Float

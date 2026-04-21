@@ -8,7 +8,8 @@ engine = create_engine(
     DATABASE_URL,
     echo=config.DEBUG,
     pool_size=5,
-    max_overflow=10
+    max_overflow=10,
+    connect_args={"options": "-c search_path=core,public"}
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
