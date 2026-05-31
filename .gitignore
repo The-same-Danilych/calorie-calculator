@@ -178,7 +178,6 @@ uploads/
 images/
 *.jpg
 *.jpeg
-*.png
 *.gif
 !default-avatar.png
 
@@ -194,3 +193,5 @@ images/
 .secrets
 secrets.yaml
 config.local.py
+
+venv/
