@@ -175,7 +175,6 @@ temp/
 
 # Project specific
 uploads/
-images/
 *.jpg
 *.jpeg
 *.gif
