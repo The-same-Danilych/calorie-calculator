@@ -22,10 +22,10 @@ android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 
 android.api = 33
 android.minapi = 21
-android.ndk = 25b
-android.sdk = 33
+android.sdk_path = /usr/local/lib/android/sdk
+android.ndk_path = /usr/local/lib/android/sdk/ndk/27.3.13750724
 
-android.accept_sdk_license = True
+android.accept_sdk_license = False
 android.build_tools = 33.0.2
 
 android.allow_backup = True
