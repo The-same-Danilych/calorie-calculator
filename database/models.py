@@ -1,6 +1,8 @@
+"""SQLAlchemy ORM‑модели: пользователь, продукты, записи дневника."""
+
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean,
-    DateTime, ForeignKey, Enum, Text
+    DateTime, ForeignKey, Enum
 )
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
@@ -10,12 +12,14 @@ Base = declarative_base()
 
 
 class GoalType(str, enum.Enum):
+    """Цель пользователя (снижение/поддержание/набор)."""
     LOSE = "lose"
     MAINTAIN = "maintain"
     GAIN = "gain"
 
 
 class ActivityLevel(str, enum.Enum):
+    """Уровень физической активности."""
     SEDENTARY = "sedentary"
     LIGHT = "light"
     MODERATE = "moderate"
@@ -24,7 +28,6 @@ class ActivityLevel(str, enum.Enum):
 
 
 class User(Base):
-
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
@@ -46,26 +49,22 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow,
                         onupdate=datetime.utcnow)
 
-    diary_entries = relationship("DiaryEntry", back_populates="user",
-                                 cascade="all, delete-orphan")
+    diary_entries = relationship(
+        "DiaryEntry", back_populates="user", cascade="all, delete-orphan")
 
 
 class FoodItem(Base):
-
     __tablename__ = "food_items"
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False, index=True)
-    name_lower = Column(String(255), nullable=False,
-                        index=True)
+    name_lower = Column(String(255), nullable=False, index=True)
 
     calories = Column(Float, nullable=False)
     protein = Column(Float, nullable=False, default=0.0)
     fat = Column(Float, nullable=False, default=0.0)
     carbs = Column(Float, nullable=False, default=0.0)
 
-    barcode = Column(String(50), nullable=True,
-                     index=True)
     is_custom = Column(Boolean, default=False)
     source = Column(String(100), nullable=True)
 

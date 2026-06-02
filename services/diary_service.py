@@ -1,8 +1,12 @@
 from sqlalchemy import func, cast, Date
 from database.models import DiaryEntry, FoodItem
 from database.engine import get_session
-from schemas.schemas import DiaryEntryCreate
+from schemas.schemas import DiaryEntryCreate, DiaryEntryUpdate
 from datetime import date, datetime
+from sqlalchemy.orm import Session
+from sqlalchemy.orm import joinedload
+from typing import Optional
+from services.food_service import add_food
 
 
 def add_diary_entry(user_id: int, data: DiaryEntryCreate) -> DiaryEntry:
@@ -39,6 +43,7 @@ def get_day_summary(user_id: int, day: date = None) -> dict:
     day = day or date.today()
     try:
         entries = (session.query(DiaryEntry)
+                   .options(joinedload(DiaryEntry.food_item))
                    .filter(DiaryEntry.user_id == user_id)
                    .filter(func.date(DiaryEntry.eaten_at) == day)
                    .all())
@@ -87,6 +92,62 @@ def delete_entry(entry_id: int) -> bool:
             session.commit()
             return True
         return False
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def get_diary_entry(entry_id: int) -> Optional[DiaryEntry]:
+    """Возвращает запись дневника по ID вместе с привязанным продуктом."""
+    session = get_session()
+    try:
+        return (session.query(DiaryEntry)
+                .options(joinedload(DiaryEntry.food_item))
+                .filter(DiaryEntry.id == entry_id)
+                .first())
+    finally:
+        session.close()
+
+
+def update_diary_entry(entry_id: int,
+                       update_data: DiaryEntryUpdate) -> DiaryEntry:
+    """
+    Обновляет существующую запись дневника.
+    Можно изменить граммы, приём пищи и/или данные продукта.
+    Если переданы food_data, создаётся новый кастомный продукт,
+    и запись привязывается к нему.
+    """
+    session = get_session()
+    try:
+        entry = session.query(DiaryEntry).filter_by(id=entry_id).first()
+        if not entry:
+            raise ValueError(f"DiaryEntry id={entry_id} не найден")
+
+        if update_data.food_data:
+            new_food = add_food(update_data.food_data)
+            entry.food_item_id = new_food.id
+            entry.food_item = new_food
+        else:
+            if entry.food_item is None:
+                session.refresh(entry, attribute_names=['food_item'])
+            new_food = entry.food_item
+
+        if update_data.grams is not None:
+            entry.grams = update_data.grams
+        if update_data.meal_type is not None:
+            entry.meal_type = update_data.meal_type
+
+        factor = entry.grams / 100.0
+        entry.calories = round(new_food.calories * factor, 1)
+        entry.protein = round(new_food.protein * factor, 1)
+        entry.fat = round(new_food.fat * factor, 1)
+        entry.carbs = round(new_food.carbs * factor, 1)
+
+        session.commit()
+        session.refresh(entry)
+        return entry
     except Exception:
         session.rollback()
         raise

@@ -1,6 +1,9 @@
+"""Экран ввода роста и веса пользователя."""
+
 from kivy.lang import Builder
 from kivy.properties import ObjectProperty
 from ui.onboarding.screens.base import OnboardingStepScreen
+from ui.onboarding.screens.progress_bar import ProgressBarHeader
 
 KV_BODY = """
 <BodyScreen>:
@@ -19,7 +22,6 @@ KV_BODY = """
             orientation: "vertical"
             size_hint_y: None
             height: dp(56)
-            
             MDIconButton:
                 icon: "arrow-left"
                 pos_hint: {"x": 0, "top": 1}
@@ -33,7 +35,6 @@ KV_BODY = """
             orientation: "vertical"
             adaptive_height: True
             spacing: dp(30)
-
             MDLabel:
                 text: "Укажите пожалуйста ваш рост и вес"
                 font_style: "Display"
@@ -43,7 +44,6 @@ KV_BODY = """
                 text_color: (0, 0, 0, 1)
                 size_hint_y: None
                 height: self.texture_size[1]
-
             MDTextField:
                 id: height_input
                 mode: "outlined"
@@ -54,15 +54,12 @@ KV_BODY = """
                 line_color_focus: (0, 0, 0, 1)
                 input_filter: "float"
                 on_text: root.on_field_change()
-                
                 MDTextFieldHintText:
                     text: "Рост (см)"
-                
                 MDTextFieldHelperText:
                     id: height_helper
                     text: ""
                     mode: "on_error"
-
             MDTextField:
                 id: weight_input
                 mode: "outlined"
@@ -73,10 +70,8 @@ KV_BODY = """
                 line_color_focus: (0, 0, 0, 1)
                 input_filter: "float"
                 on_text: root.on_field_change()
-                
                 MDTextFieldHintText:
                     text: "Вес (кг)"
-                
                 MDTextFieldHelperText:
                     id: weight_helper
                     text: ""
@@ -96,7 +91,6 @@ KV_BODY = """
             md_bg_color: (0, 0, 0, 1)
             disabled: True
             on_release: root.go_next()
-            
             MDButtonText:
                 text: "Продолжить"
                 theme_text_color: "Custom"
@@ -107,6 +101,7 @@ Builder.load_string(KV_BODY)
 
 
 class BodyScreen(OnboardingStepScreen):
+    """Экран для ввода роста (см) и веса (кг)."""
     flow = ObjectProperty(None)
     show_progress = True
 
@@ -117,11 +112,16 @@ class BodyScreen(OnboardingStepScreen):
         self._update_next_button()
 
     def on_field_change(self):
+        """Вызывается при изменении текста в любом поле."""
         self.validate_field("height")
         self.validate_field("weight")
         self._update_next_button()
 
     def validate_field(self, field: str) -> bool:
+        """
+        Проверяет корректность значения в поле.
+        Возвращает True, если значение допустимо.
+        """
         if field == "height":
             text = self.ids.height_input.text.strip()
             helper = self.ids.height_helper
@@ -153,7 +153,7 @@ class BodyScreen(OnboardingStepScreen):
                 helper.text = "Рост должен быть от 50 до 300 см"
                 helper.mode = "on_error"
                 return False
-        else:
+        else:  # weight
             if 20 <= value <= 500:
                 helper.text = ""
                 helper.mode = "persistent"
@@ -166,6 +166,7 @@ class BodyScreen(OnboardingStepScreen):
                 return False
 
     def _update_next_button(self):
+        """Активирует кнопку «Продолжить», если оба поля валидны."""
         height_valid = self.validate_field("height")
         weight_valid = self.validate_field("weight")
         self.ids.next_btn.disabled = not (height_valid and weight_valid)

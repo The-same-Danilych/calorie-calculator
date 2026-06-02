@@ -1,654 +1,776 @@
-# ui/home/home_screen.py
-from kivy.lang import Builder
-from kivy.properties import NumericProperty, StringProperty, ObjectProperty
-from kivy.clock import Clock
-from kivy.metrics import dp
-from kivy.graphics import Color, Ellipse, Line
-from kivymd.uix.screen import MDScreen
-from kivymd.uix.boxlayout import MDBoxLayout
+"""Главный экран дневника: отображение приёмов пищи, прогресса, календарь."""
 
-from services.diary_service import get_day_summary
-from services.user_service import get_user_async
+from kivy.uix.widget import Widget
+from kivy.lang import Builder
+from kivy.metrics import dp
+from kivy.clock import Clock
+from kivymd.uix.screen import MDScreen
+from kivymd.uix.list import (
+    MDListItem, MDListItemHeadlineText,
+    MDListItemTrailingIcon,
+    MDListItemSupportingText
+)
+from kivymd.uix.snackbar import MDSnackbar, MDSnackbarText
+from kivymd.uix.pickers import MDModalDatePicker, MDModalInputDatePicker
+from kivymd.uix.behaviors import RotateBehavior
+from kivy.uix.behaviors import ButtonBehavior
+from kivymd.uix.button import MDFabButton
+from kivymd.uix.menu import MDDropdownMenu
+from kivymd.uix.dialog import (
+    MDDialog,
+    MDDialogHeadlineText,
+    MDDialogSupportingText,
+    MDDialogButtonContainer,
+)
+from kivymd.uix.navigationdrawer import (
+    MDNavigationDrawer, MDNavigationDrawerMenu,
+    MDNavigationDrawerHeader, MDNavigationDrawerLabel, MDNavigationDrawerItem
+)
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.button import MDButton, MDButtonText
+
+from services.diary_service import get_day_summary, delete_entry
+from services.user_service import get_user_async, delete_user_async
 from utils.async_db import run_in_background
-from ui.main_screen.widgets.macro_bar import MacroBar
-from ui.main_screen.widgets.meal_section import MealSection
+from database.engine import delete_database
+
+from datetime import date
 
 KV_HOME = """
 #:import dp kivy.metrics.dp
-#:import datetime datetime.datetime
-
-<CalorieRing>:
-    size_hint: None, None
-    size: dp(120), dp(120)
 
 <HomeScreen>:
+    RelativeLayout:
 
-    MDBoxLayout:
-        orientation: "vertical"
-        size_hint: 1, 1
+        MDNavigationDrawer:
+            id: nav_drawer
+            drawer_type: "modal"
+            radius: 0
+            width: dp(300)
+            size_hint: None, 1
+            md_bg_color: (1, 1, 1, 1)
+            pos_hint: {"x": 0, "top": 1}
 
-        # ── AppBar ──────────────────────────────────────────────────
+            MDNavigationDrawerMenu:
+
+                MDNavigationDrawerHeader:
+                    title: "Меню"
+                    spacing: "4dp"
+                    padding: ["12dp", "12dp", "12dp", "12dp"]
+
+                MDNavigationDrawerItem:
+                    text: "Изменить профиль"
+                    icon: "account-edit"
+                    on_release: root.open_edit_profile_dialog(); nav_drawer.set_state("close")
+
+                MDNavigationDrawerItem:
+                    text: "Анализ"
+                    icon: "chart-line"
+                    on_release: root.open_analysis(); nav_drawer.set_state("close")
+
+                MDNavigationDrawerItem:
+                    text: "Удалить аккаунт"
+                    icon: "delete"
+                    on_release: root.confirm_delete_account(); nav_drawer.set_state("close")
+
         MDBoxLayout:
-            orientation: "horizontal"
-            size_hint_y: None
-            height: dp(56)
-            padding: [dp(8), dp(4), dp(8), dp(4)]
-            spacing: dp(4)
-            md_bg_color: 1, 1, 1, 1
+            orientation: "vertical"
+            md_bg_color: (1, 1, 1, 1)
+            size_hint: 1, 1
 
-            MDIconButton:
-                icon: "menu"
-                size_hint: None, None
-                size: dp(48), dp(48)
-                pos_hint: {"center_y": 0.5}
-                theme_icon_color: "Custom"
-                icon_color: 0, 0, 0, 1
-                on_release: root.open_drawer()
+        MDBoxLayout:
+            orientation: "vertical"
+            md_bg_color: (1, 1, 1, 1)
+            size_hint: 1, 1
 
-            MDLabel:
-                text: "Дневник"
-                font_style: "Title"
-                role: "large"
-                theme_text_color: "Custom"
-                text_color: 0, 0, 0, 1
-                valign: "center"
-                size_hint_x: 1
+            MDTopAppBar:
+                type: "small"
+                size_hint_x: .9
+                pos_hint: {"center_x": .5}
+                theme_bg_color: "Custom"
+                md_bg_color: (1, 1, 1, 1)
+                elevation: 0
 
-            MDIconButton:
-                id: theme_btn
-                icon: "weather-sunny"
-                size_hint: None, None
-                size: dp(48), dp(48)
-                pos_hint: {"center_y": 0.5}
-                theme_icon_color: "Custom"
-                icon_color: 0, 0, 0, 1
-                on_release: root.toggle_theme()
+                MDTopAppBarLeadingButtonContainer:
+                    MDActionTopAppBarButton:
+                        icon: "menu"
+                        id: menu_button
+                        on_release: root.toggle_nav_drawer()
+                MDTopAppBarTitle:
+                    text: "Дневник"
+                    halign: "center"
 
-        MDDivider:
-            size_hint_y: None
-            height: dp(1)
-
-        # ── Прокручиваемое тело ─────────────────────────────────────
-        MDScrollView:
-            id: scroll
-            do_scroll_x: False
-            bar_width: 0
+                MDTopAppBarTrailingButtonContainer:
+                    MDActionTopAppBarButton:
+                        icon: "calendar"
+                        on_release: root.show_modal_date_picker()
 
             MDBoxLayout:
-                id: body
                 orientation: "vertical"
                 size_hint_y: None
-                height: self.minimum_height
-                padding: [dp(16), dp(16), dp(16), dp(96)]
-                spacing: dp(12)
+                height: dp(48)
+                padding: [dp(16), dp(8), dp(16), dp(8)]
+                md_bg_color: (0.98, 0.98, 0.98, 1)
 
-                # ── Карточка: кольцо + остаток ──────────────────────
-                MDCard:
-                    id: calorie_card
-                    style: "elevated"
-                    elevation: 1
-                    radius: [dp(16)]
+                MDLabel:
+                    id: date_label
+                    text: ""
+                    font_style: "Label"
+                    role: "medium"
+                    halign: "center"
+                    theme_text_color: "Custom"
+                    text_color: (0, 0, 0, 0.7)
+
+            MDScrollView:
+                do_scroll_x: False
+                bar_width: 0
+
+                MDBoxLayout:
+                    orientation: "vertical"
+                    spacing: dp(16)
                     size_hint_y: None
-                    height: dp(120)
-                    padding: [dp(16), dp(12), dp(16), dp(12)]
-                    md_bg_color: 1, 1, 1, 1
+                    height: self.minimum_height
+                    padding: [dp(16), dp(16), dp(16), dp(16)]
 
-                    MDBoxLayout:
-                        orientation: "horizontal"
-                        spacing: dp(20)
-
-                        CalorieRing:
-                            id: calorie_ring
+                    MDCard:
+                        size_hint_x: 1
+                        size_hint_y: None
+                        height: dp(320)
+                        style: "outlined"
+                        theme_bg_color: "Custom"
+                        md_bg_color: (1, 1, 1, 1)
+                        ripple_behavior: False
+                        focus_behavior: False
+                        elevation: 0
 
                         MDBoxLayout:
                             orientation: "vertical"
-                            spacing: dp(4)
-                            pos_hint: {"center_y": 0.5}
+                            spacing: dp(16)
+                            padding: dp(16)
 
-                            MDLabel:
-                                id: goal_label
-                                text: "Цель: — ккал"
-                                font_style: "Label"
-                                role: "large"
-                                theme_text_color: "Custom"
-                                text_color: 0, 0, 0, 0.5
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                spacing: dp(16)
                                 size_hint_y: None
-                                height: dp(18)
+                                height: dp(120)
+                                theme_bg_color: "Custom"
+                                md_bg_color: (1, 1, 1, 1)
 
-                            MDLabel:
-                                id: remaining_label
-                                text: "— ккал осталось"
-                                font_style: "Title"
-                                role: "small"
-                                theme_text_color: "Custom"
-                                text_color: 0.18, 0.49, 0.31, 1
-                                size_hint_y: None
-                                height: dp(24)
+                                MDExCircularProgressIndicator:
+                                    id: calories_progress
+                                    size_hint: None, None
+                                    width: dp(120)
+                                    height: dp(120)
+                                    active_track_color: (0.9, 0, 0.2, 1)
+                                    inactive_track_color: (0.85, 0.85, 0.85, 1)
+                                    value: 0
+                                    amplitude: dp(1)
 
-                            MDLabel:
-                                id: date_label
-                                text: ""
-                                font_style: "Label"
-                                role: "medium"
-                                theme_text_color: "Custom"
-                                text_color: 0, 0, 0, 0.35
-                                size_hint_y: None
-                                height: dp(16)
+                                MDBoxLayout:
+                                    orientation: "vertical"
+                                    spacing: dp(4)
+                                    pos_hint: {"center_y": 0.5}
 
-                # ── Карточка: шкалы БЖУ ─────────────────────────────
-                MDCard:
-                    id: macro_card
-                    style: "elevated"
-                    elevation: 1
-                    radius: [dp(16)]
-                    size_hint_y: None
-                    height: self.minimum_height
-                    padding: [dp(16), dp(12), dp(16), dp(12)]
-                    md_bg_color: 1, 1, 1, 1
+                                    MDLabel:
+                                        id: calories_goal
+                                        text: "0 / 0 ккал"
+                                        font_style: "Title"
+                                        role: "large"
+                                        theme_text_color: "Custom"
+                                        text_color: (0, 0, 0, 1)
+                                        halign: "center"
+
+                            MDBoxLayout:
+                                orientation: "vertical"
+                                spacing: dp(4)
+                                theme_bg_color: "Custom"
+                                md_bg_color: (1, 1, 1, 1)
+
+                                MDLabel:
+                                    text: "Белки"
+                                    font_style: "Title"
+                                    role: "small"
+                                    theme_text_color: "Custom"
+                                    text_color: (0, 0, 0, 1)
+
+                                MDExLinearProgressIndicator:
+                                    id: protein_indicator
+                                    active_track_color: (1, 0, 0, 1)
+                                    inactive_track_color: (0.85, 0.85, 0.85, 1)
+                                    value: 0
+                                    amplitude: dp(0)
+
+                                MDLabel:
+                                    id: protein_goal
+                                    text: "0 / 0 г"
+                                    role: "small"
+                                    theme_text_color: "Custom"
+                                    text_color: (0, 0, 0, 0.9)
+
+                            MDBoxLayout:
+                                orientation: "vertical"
+                                spacing: dp(4)
+                                theme_bg_color: "Custom"
+                                md_bg_color: (1, 1, 1, 1)
+
+                                MDLabel:
+                                    text: "Жиры"
+                                    font_style: "Title"
+                                    role: "small"
+                                    theme_text_color: "Custom"
+                                    text_color: (0, 0, 0, 1)
+
+                                MDExLinearProgressIndicator:
+                                    id: fat_indicator
+                                    active_track_color: (0, 1, 0, 1)
+                                    inactive_track_color: (0.85, 0.85, 0.85, 1)
+                                    value: 0
+                                    amplitude: dp(0)
+
+                                MDLabel:
+                                    id: fat_goal
+                                    text: "0 / 0 г"
+                                    role: "small"
+                                    theme_text_color: "Custom"
+                                    text_color: (0, 0, 0, 0.9)
+
+                            MDBoxLayout:
+                                orientation: "vertical"
+                                spacing: dp(4)
+                                theme_bg_color: "Custom"
+                                md_bg_color: (1, 1, 1, 1)
+
+                                MDLabel:
+                                    text: "Углеводы"
+                                    font_style: "Title"
+                                    role: "small"
+                                    theme_text_color: "Custom"
+                                    text_color: (0, 0, 0, 1)
+
+                                MDExLinearProgressIndicator:
+                                    id: carb_indicator
+                                    active_track_color: (0, 0, 1, 1)
+                                    inactive_track_color: (0.85, 0.85, 0.85, 1)
+                                    value: 0
+                                    amplitude: dp(0)
+
+                                MDLabel:
+                                    id: carb_goal
+                                    text: "0 / 0 г"
+                                    role: "small"
+                                    theme_text_color: "Custom"
+                                    text_color: (0, 0, 0, 0.9)
 
                     MDBoxLayout:
-                        id: macro_box
                         orientation: "vertical"
+                        spacing: dp(16)
                         size_hint_y: None
                         height: self.minimum_height
+                        padding: [dp(16), dp(16), dp(16), dp(16)]
 
-                # ── Заголовок «Приёмы пищи» ─────────────────────────
-                MDLabel:
-                    text: "Приёмы пищи"
-                    font_style: "Title"
-                    role: "medium"
-                    theme_text_color: "Custom"
-                    text_color: 0, 0, 0, 0.8
-                    size_hint_y: None
-                    height: dp(32)
-                    padding_x: dp(4)
+                        MDExpansionPanel:
+                            id: panel_breakfast
+                            size_hint_y: None
+                            height: self.minimum_height
 
-                # ── Секции приёмов (добавляются динамически) ─────────
-                MDBoxLayout:
-                    id: meals_box
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(10)
+                            MDExpansionPanelHeader:
+                                size_hint_y: None
+                                height: dp(56)
 
-    # ── FAB ─────────────────────────────────────────────────────────
-    MDFloatLayout:
-        size_hint: None, None
-        size: 0, 0
-        pos_hint: {"right": 1, "y": 0}
+                                MDListItem:
+                                    ripple_effect: True
+                                    theme_bg_color: "Custom"
+                                    md_bg_color: (0.95, 0.95, 0.95, 1)
+
+                                    MDListItemSupportingText:
+                                        id: breakfast_header
+                                        text: "Завтрак (0 ккал)"
+
+                                    TrailingPressedIconButton:
+                                        id: chevron_breakfast
+                                        icon: "chevron-right"
+                                        on_release: root.tap_expansion_chevron(panel_breakfast, chevron_breakfast, "breakfast")
+
+                            MDExpansionPanelContent:
+                                id: breakfast_content
+                                orientation: "vertical"
+                                padding: "12dp", 0, "12dp", "12dp"
+                                size_hint_y: None
+                                height: self.minimum_height
+
+                        MDExpansionPanel:
+                            id: panel_lunch
+                            size_hint_y: None
+                            height: self.minimum_height
+
+                            MDExpansionPanelHeader:
+                                size_hint_y: None
+                                height: dp(56)
+
+                                MDListItem:
+                                    ripple_effect: True
+                                    theme_bg_color: "Custom"
+                                    md_bg_color: (0.95, 0.95, 0.95, 1)
+
+                                    MDListItemSupportingText:
+                                        id: lunch_header
+                                        text: "Обед (0 ккал)"
+
+                                    TrailingPressedIconButton:
+                                        id: chevron_lunch
+                                        icon: "chevron-right"
+                                        on_release: root.tap_expansion_chevron(panel_lunch, chevron_lunch, "lunch")
+
+                            MDExpansionPanelContent:
+                                id: lunch_content
+                                orientation: "vertical"
+                                padding: "12dp", 0, "12dp", "12dp"
+                                size_hint_y: None
+                                height: self.minimum_height
+
+                        MDExpansionPanel:
+                            id: panel_dinner
+                            size_hint_y: None
+                            height: self.minimum_height
+
+                            MDExpansionPanelHeader:
+                                size_hint_y: None
+                                height: dp(56)
+
+                                MDListItem:
+                                    ripple_effect: True
+                                    theme_bg_color: "Custom"
+                                    md_bg_color: (0.95, 0.95, 0.95, 1)
+
+                                    MDListItemSupportingText:
+                                        id: dinner_header
+                                        text: "Ужин (0 ккал)"
+
+                                    TrailingPressedIconButton:
+                                        id: chevron_dinner
+                                        icon: "chevron-right"
+                                        on_release: root.tap_expansion_chevron(panel_dinner, chevron_dinner, "dinner")
+
+                            MDExpansionPanelContent:
+                                id: dinner_content
+                                orientation: "vertical"
+                                padding: "12dp", 0, "12dp", "12dp"
+                                size_hint_y: None
+                                height: self.minimum_height
+
+                        MDExpansionPanel:
+                            id: panel_snack
+                            size_hint_y: None
+                            height: self.minimum_height
+
+                            MDExpansionPanelHeader:
+                                size_hint_y: None
+                                height: dp(56)
+
+                                MDListItem:
+                                    ripple_effect: True
+                                    theme_bg_color: "Custom"
+                                    md_bg_color: (0.95, 0.95, 0.95, 1)
+
+                                    MDListItemSupportingText:
+                                        id: snack_header
+                                        text: "Перекус (0 ккал)"
+
+                                    TrailingPressedIconButton:
+                                        id: chevron_snack
+                                        icon: "chevron-right"
+                                        on_release: root.tap_expansion_chevron(panel_snack, chevron_snack, "snack")
+
+                            MDExpansionPanelContent:
+                                id: snack_content
+                                orientation: "vertical"
+                                padding: "12dp", 0, "12dp", "12dp"
+                                size_hint_y: None
+                                height: self.minimum_height
+
+                    MDBoxLayout:
+                        size_hint_y: None
+                        height: dp(100)
 
         MDFabButton:
-            id: fab
+            id: add_meal
             icon: "plus"
-            style: "standard"
-            size_hint: None, None
-            size: dp(56), dp(56)
-            pos_hint: {"right": 0.93, "y": 0.04}
-            theme_bg_color: "Custom"
-            md_bg_color: 0, 0, 0, 1
             theme_icon_color: "Custom"
-            icon_color: 1, 1, 1, 1
-            on_release: root.open_add_sheet()
-
-    # ── BottomSheet (оверлей) ────────────────────────────────────────
-    MDBoxLayout:
-        id: sheet_overlay
-        opacity: 0
-        size_hint: 1, 1
-        md_bg_color: 0, 0, 0, 0.45
-        on_touch_down: root.close_sheet_on_bg(*args)
-
-        MDBoxLayout:
-            id: sheet
-            orientation: "vertical"
-            size_hint: 1, None
-            height: 0
-            pos_hint: {"bottom": 1}
-            radius: [dp(20), dp(20), 0, 0]
-            md_bg_color: 1, 1, 1, 1
-            padding: [0, dp(8), 0, dp(24)]
-
-            # Ручка
-            MDBoxLayout:
-                size_hint_y: None
-                height: dp(24)
-                MDBoxLayout:
-                    size_hint: None, None
-                    size: dp(36), dp(4)
-                    radius: [dp(2)]
-                    md_bg_color: 0, 0, 0, 0.15
-                    pos_hint: {"center_x": 0.5, "center_y": 0.5}
-
-            MDLabel:
-                text: "Добавить продукт"
-                font_style: "Label"
-                role: "large"
-                theme_text_color: "Custom"
-                text_color: 0, 0, 0, 0.4
-                halign: "left"
-                size_hint_y: None
-                height: dp(32)
-                padding_x: dp(20)
-
-            # Опция: вручную
-            MDBoxLayout:
-                id: opt_manual
-                orientation: "horizontal"
-                size_hint_y: None
-                height: dp(64)
-                padding: [dp(20), dp(8), dp(20), dp(8)]
-                spacing: dp(16)
-                on_touch_down: root.sheet_option_touch(self, args[0], "manual")
-
-                MDBoxLayout:
-                    size_hint: None, None
-                    size: dp(44), dp(44)
-                    radius: [dp(13)]
-                    md_bg_color: 0.91, 0.95, 0.87, 1
-                    pos_hint: {"center_y": 0.5}
-
-                    MDIconButton:
-                        icon: "pencil-outline"
-                        size_hint: None, None
-                        size: dp(44), dp(44)
-                        theme_icon_color: "Custom"
-                        icon_color: 0.23, 0.43, 0.07, 1
-                        on_release: root.go_to_add("manual")
-
-                MDBoxLayout:
-                    orientation: "vertical"
-                    size_hint_x: 1
-                    spacing: dp(2)
-                    pos_hint: {"center_y": 0.5}
-
-                    MDLabel:
-                        text: "Ввести вручную"
-                        font_style: "Body"
-                        role: "large"
-                        theme_text_color: "Custom"
-                        text_color: 0, 0, 0, 0.88
-                        size_hint_y: None
-                        height: dp(22)
-
-                    MDLabel:
-                        text: "Название, граммы, КБЖУ или поиск по базе"
-                        font_style: "Label"
-                        role: "medium"
-                        theme_text_color: "Custom"
-                        text_color: 0, 0, 0, 0.4
-                        size_hint_y: None
-                        height: dp(18)
-
-                MDIconButton:
-                    icon: "chevron-right"
-                    size_hint: None, None
-                    size: dp(32), dp(32)
-                    pos_hint: {"center_y": 0.5}
-                    theme_icon_color: "Custom"
-                    icon_color: 0, 0, 0, 0.25
-                    on_release: root.go_to_add("manual")
-
-            MDDivider:
-                size_hint_y: None
-                height: dp(1)
-                padding: [dp(20), 0, dp(20), 0]
-
-            # Опция: штрихкод
-            MDBoxLayout:
-                id: opt_barcode
-                orientation: "horizontal"
-                size_hint_y: None
-                height: dp(64)
-                padding: [dp(20), dp(8), dp(20), dp(8)]
-                spacing: dp(16)
-                on_touch_down: root.sheet_option_touch(self, args[0], "barcode")
-
-                MDBoxLayout:
-                    size_hint: None, None
-                    size: dp(44), dp(44)
-                    radius: [dp(13)]
-                    md_bg_color: 0.90, 0.94, 0.98, 1
-                    pos_hint: {"center_y": 0.5}
-
-                    MDIconButton:
-                        icon: "barcode-scan"
-                        size_hint: None, None
-                        size: dp(44), dp(44)
-                        theme_icon_color: "Custom"
-                        icon_color: 0.09, 0.37, 0.64, 1
-                        on_release: root.go_to_add("barcode")
-
-                MDBoxLayout:
-                    orientation: "vertical"
-                    size_hint_x: 1
-                    spacing: dp(2)
-                    pos_hint: {"center_y": 0.5}
-
-                    MDLabel:
-                        text: "Сканировать штрихкод"
-                        font_style: "Body"
-                        role: "large"
-                        theme_text_color: "Custom"
-                        text_color: 0, 0, 0, 0.88
-                        size_hint_y: None
-                        height: dp(22)
-
-                    MDLabel:
-                        text: "Автоматически заполнит из базы"
-                        font_style: "Label"
-                        role: "medium"
-                        theme_text_color: "Custom"
-                        text_color: 0, 0, 0, 0.4
-                        size_hint_y: None
-                        height: dp(18)
-
-                MDIconButton:
-                    icon: "chevron-right"
-                    size_hint: None, None
-                    size: dp(32), dp(32)
-                    pos_hint: {"center_y": 0.5}
-                    theme_icon_color: "Custom"
-                    icon_color: 0, 0, 0, 0.25
-                    on_release: root.go_to_add("barcode")
+            icon_color: (1, 1, 1, 1)
+            style: "large"
+            pos_hint: {"center_x": 0.5, "bottom": 1}
+            theme_bg_color: "Custom"
+            md_bg_color: (0, 0, 0, 1)
+            on_release: root.on_fab_pressed()
 """
 
 Builder.load_string(KV_HOME)
 
-# ──────────────────────────────────────────────────────────────────────── #
-MEAL_META = {
-    "breakfast": ("Завтрак",  "🌅", [1.0,  0.95, 0.88, 1]),
-    "lunch":     ("Обед",     "☀️", [0.91, 0.97, 0.91, 1]),
-    "dinner":    ("Ужин",     "🌙", [0.93, 0.90, 0.98, 1]),
-    "snack":     ("Перекус",  "🍎", [0.99, 0.91, 0.94, 1]),
-}
+
+class TrailingPressedIconButton(ButtonBehavior,
+                                RotateBehavior,
+                                MDListItemTrailingIcon):
+    """Иконка-кнопка с анимацией поворота для раскрытия панели приёма пищи."""
+    pass
 
 
-# ── Виджет кольца калорий ─────────────────────────────────────────────── #
-class CalorieRing(MDBoxLayout):
-    """
-    Рисует круговую диаграмму прогресса поверх центральной подписи.
-    eaten  — сколько съедено (ккал)
-    goal   — дневная цель (ккал)
-    """
-    eaten = NumericProperty(0)
-    goal  = NumericProperty(2000)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.bind(eaten=self._redraw, goal=self._redraw, size=self._redraw)
-        Clock.schedule_once(self._build_labels, 0)
-
-    def _build_labels(self, *_):
-        self._num_lbl = _make_label("0", "Display", "small", (0, 0, 0, 1))
-        self._sub_lbl = _make_label("ккал", "Label", "medium", (0, 0, 0, 0.45))
-        self.add_widget(self._num_lbl)
-        self.add_widget(self._sub_lbl)
-        self._redraw()
-
-    def _redraw(self, *_):
-        if not hasattr(self, "_num_lbl"):
-            return
-        self._num_lbl.text = f"{self.eaten:.0f}"
-        self.canvas.before.clear()
-
-        cx, cy = self.center
-        r_outer = min(self.width, self.height) / 2 - dp(6)
-        stroke  = dp(8)
-        r_inner = r_outer - stroke
-
-        with self.canvas.before:
-            # Фоновая дуга (серая)
-            Color(0.88, 0.88, 0.88, 1)
-            Line(
-                circle=(cx, cy, r_outer - stroke / 2, 0, 360),
-                width=stroke,
-                cap="none",
-            )
-            # Прогресс (зелёный)
-            ratio = min(self.eaten / max(self.goal, 1), 1.0)
-            if ratio > 0:
-                Color(0.18, 0.49, 0.31, 1)
-                Line(
-                    circle=(cx, cy, r_outer - stroke / 2, 90, 90 - ratio * 360),
-                    width=stroke,
-                    cap="round",
-                )
+class TrailingDeleteIconButton(ButtonBehavior,
+                               MDListItemTrailingIcon):
+    """Кликабельная иконка удаления в списке приёмов пищи."""
+    pass
 
 
-# ── Вспомогательная фабрика Label ────────────────────────────────────── #
-def _make_label(text, style, role, color):
-    from kivymd.uix.label import MDLabel
-    return MDLabel(
-        text=text,
-        font_style=style,
-        role=role,
-        halign="center",
-        valign="center",
-        theme_text_color="Custom",
-        text_color=color,
-    )
-
-
-# ── Главный экран ─────────────────────────────────────────────────────── #
 class HomeScreen(MDScreen):
 
-    _is_dark   = False
-    _user      = None
-    _user_id   = 1
-    _sheet_open = False
-    _active_meal_key = "lunch"
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.md_bg_color = (0.96, 0.96, 0.94, 1)
+        self.user = None
+        self.totals = {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
+        self.meals = {"breakfast": [], "lunch": [], "dinner": [], "snack": []}
+        self._loading = False
+        self.current_date = date.today()
+        self.menu = None
 
-    # ------------------------------------------------------------------ #
     def on_enter(self):
-        self._set_today_label()
-        self._load_data()
+        """При входе на экран загружаем данные пользователя и дневник."""
+        self.load_data()
 
-    # ── Загрузка данных ───────────────────────────────────────────── #
-    def _load_data(self):
-        get_user_async(self._on_user_loaded)
-
-    def _on_user_loaded(self, user):
-        if not user:
+    def load_data(self, target_date: date = None):
+        """Загружает данные для указанной даты (или сегодняшней)."""
+        if self._loading:
             return
-        self._user    = user
-        self._user_id = user.id
-        self._build_macro_bars(user)
-        self._update_goal_label(user.calorie_goal)
-        self._load_diary()
+        self._loading = True
+        if target_date is not None:
+            self.current_date = target_date
+        self.update_date_label()
+        get_user_async(self.on_user_loaded)
 
-    def _load_diary(self):
-        uid = self._user_id
-
-        def task():
-            return get_day_summary(uid)
-
-        run_in_background(task, self._on_diary_loaded)
-
-    def _on_diary_loaded(self, summary: dict):
-        meals  = summary.get("meals", {})
-        totals = summary.get("totals", {})
-
-        # Обновляем кольцо
-        eaten = totals.get("calories", 0)
-        goal  = self._user.calorie_goal if self._user else 2000
-        self.ids.calorie_ring.eaten = eaten
-        self.ids.calorie_ring.goal  = goal
-        remaining = max(goal - eaten, 0)
-        self.ids.remaining_label.text = f"{remaining:.0f} ккал осталось"
-
-        # Обновляем шкалы БЖУ
-        if self._user and hasattr(self, "_macro_bars"):
-            mb = self._macro_bars
-            mb["protein"].eaten = totals.get("protein", 0)
-            mb["fat"].eaten     = totals.get("fat",     0)
-            mb["carbs"].eaten   = totals.get("carbs",   0)
-
-        # Обновляем секции приёмов
-        for key, section in self._meal_sections.items():
-            section.set_entries(meals.get(key, []))
-
-    # ── Строим шкалы БЖУ ──────────────────────────────────────────── #
-    def _build_macro_bars(self, user):
-        box = self.ids.macro_box
-        box.clear_widgets()
-
-        defs = [
-            ("protein", "Белки",    user.protein_goal, [0.36, 0.50, 0.83, 1]),
-            ("fat",     "Жиры",     user.fat_goal,     [0.83, 0.53, 0.36, 1]),
-            ("carbs",   "Углеводы", user.carb_goal,    [0.32, 0.66, 0.47, 1]),
-        ]
-        self._macro_bars = {}
-        for key, label, goal, color in defs:
-            bar = MacroBar(label=label, bar_color=color, goal=goal, eaten=0)
-            self._macro_bars[key] = bar
-            box.add_widget(bar)
-
-    # ── Строим секции приёмов ─────────────────────────────────────── #
-    def on_kv_post(self, base_widget):
-        box = self.ids.meals_box
-        self._meal_sections = {}
-
-        for key, (title, emoji, bg) in MEAL_META.items():
-            section = MealSection(
-                meal_key=key,
-                meal_title=title,
-                icon_emoji=emoji,
-                icon_bg_color=bg,
-                on_add_callback=self._on_meal_add,
-                on_delete_callback=self._on_entry_delete,
+    def on_user_loaded(self, user):
+        """Обработчик загрузки пользователя."""
+        self.user = user
+        if user:
+            self.update_goals_display()
+            run_in_background(
+                lambda: get_day_summary(user.id, self.current_date),
+                on_success=self.on_summary_loaded,
+                on_error=self.on_load_error
             )
-            self._meal_sections[key] = section
-            box.add_widget(section)
+        else:
+            self.manager.current = "onboarding"
+            self._loading = False
 
-    # ── Вспомогательные ───────────────────────────────────────────── #
-    def _set_today_label(self):
-        from datetime import date
-        import locale
-        try:
-            locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
-        except locale.Error:
-            pass
-        today = date.today()
-        # В Windows %d выводит день с ведущим нулём (01, 02...), уберём его вручную
-        day = today.strftime("%d").lstrip("0") or "0"  # если вдруг "00" – оставим "0"
-        month = today.strftime("%B").lower()
-        self.ids.date_label.text = f"сегодня, {day} {month}"
+    def on_summary_loaded(self, summary):
+        """Обработчик загрузки сводки за день."""
+        self.totals = summary["totals"]
+        self.meals = summary["meals"]
+        self.update_progress_bars()
+        self.update_meal_panels()
+        self._loading = False
 
-    def _update_goal_label(self, goal: float):
-        self.ids.goal_label.text = f"Цель: {goal:.0f} ккал"
+        total_cal = self.totals["calories"]
+        all_empty = all(len(v) == 0 for v in self.meals.values())
+        if total_cal == 0 and all_empty and self.current_date != date.today():
+            empty_date = self.current_date
+            self.current_date = date.today()
+            self.show_empty_day_warning(empty_date)
+            self.load_data()
 
-    # ── FAB и BottomSheet ─────────────────────────────────────────── #
-    def open_add_sheet(self, meal_key: str = "lunch"):
-        self._active_meal_key = meal_key
-        self._open_sheet()
+    def show_empty_day_warning(self, empty_date: date):
+        """Предупреждение, что за выбранную дату нет записей."""
+        MDSnackbar(
+            MDSnackbarText(
+                text=f"Нет записей за {empty_date.strftime('%d.%m.%Y')}. Показан сегодняшний день"),
+            duration=2.5,
+            pos_hint={"center_x": 0.5, "center_y": 0.1},
+        ).open()
 
-    def _open_sheet(self):
-        from kivy.animation import Animation
-        overlay = self.ids.sheet_overlay
-        sheet   = self.ids.sheet
-        overlay.opacity = 0
-        sheet.height    = 0
-        self._sheet_open = True
-        Animation(opacity=1, duration=0.2).start(overlay)
-        Animation(height=dp(260), duration=0.28, t="out_cubic").start(sheet)
+    def update_date_label(self):
+        """Обновляет отображение текущей даты."""
+        if hasattr(self.ids, "date_label"):
+            self.ids.date_label.text = self.current_date.strftime("%d.%m.%Y")
 
-    def _close_sheet(self):
-        from kivy.animation import Animation
-        self._sheet_open = False
-        overlay = self.ids.sheet_overlay
-        sheet   = self.ids.sheet
-        Animation(opacity=0, duration=0.18).start(overlay)
-        Animation(height=0, duration=0.2, t="in_cubic").start(sheet)
+    def on_load_error(self, error):
+        """Ошибка загрузки дневника."""
+        self._loading = False
+        MDSnackbar(MDSnackbarText(
+            text="Не удалось загрузить дневник"), duration=2).open()
 
-    def close_sheet_on_bg(self, widget, touch):
-        if not self._sheet_open:
+    def update_goals_display(self):
+        """Обновляет круговой и линейные индикаторы КБЖУ."""
+        if not self.user:
             return
-        # Закрываем только по тапу на затемнение, не на сам sheet
-        if self.ids.sheet.collide_point(*touch.pos):
-            return
-        if widget.collide_point(*touch.pos):
-            self._close_sheet()
+        cal_goal = self.user.calorie_goal
+        cal_current = self.totals["calories"]
+        self.ids.calories_goal.text = f"{int(cal_current)} / {int(cal_goal)} ккал"
+        self.ids.calories_progress.value = (
+            cal_current / cal_goal * 100) if cal_goal else 0
 
-    def sheet_option_touch(self, widget, touch, mode: str):
-        if widget.collide_point(*touch.pos):
-            self.go_to_add(mode)
+        prot_goal = self.user.protein_goal
+        prot_current = self.totals["protein"]
+        self.ids.protein_goal.text = f"{int(prot_current)} / {int(prot_goal)} г"
+        self.ids.protein_indicator.value = (
+            prot_current / prot_goal * 100) if prot_goal else 0
 
-    def go_to_add(self, mode: str):
-        self._close_sheet()
-        Clock.schedule_once(lambda dt: self._navigate_to_add(mode), 0.2)
+        fat_goal = self.user.fat_goal
+        fat_current = self.totals["fat"]
+        self.ids.fat_goal.text = f"{int(fat_current)} / {int(fat_goal)} г"
+        self.ids.fat_indicator.value = (
+            fat_current / fat_goal * 100) if fat_goal else 0
 
-    def _navigate_to_add(self, mode: str):
-        if not self.manager or not self.manager.has_screen("add_food"):
-            return
-        screen = self.manager.get_screen("add_food")
-        screen.open_for(
-            meal_key=self._active_meal_key,
-            user_id=self._user_id,
-            on_done=self._on_food_added,
+        carb_goal = self.user.carb_goal
+        carb_current = self.totals["carbs"]
+        self.ids.carb_goal.text = f"{int(carb_current)} / {int(carb_goal)} г"
+        self.ids.carb_indicator.value = (
+            carb_current / carb_goal * 100) if carb_goal else 0
+
+    def update_progress_bars(self):
+        """Обёртка для обновления всех индикаторов."""
+        self.update_goals_display()
+
+    def update_meal_panels(self):
+        """Заполняет панели приёмов пищи записями из дневника."""
+        for meal_type in ["breakfast", "lunch", "dinner", "snack"]:
+            entries = self.meals.get(meal_type, [])
+            total_cal = sum(e.calories for e in entries)
+            header_text = {
+                "breakfast": "Завтрак",
+                "lunch": "Обед",
+                "dinner": "Ужин",
+                "snack": "Перекус"
+            }[meal_type]
+            header_label = self.ids[f"{meal_type}_header"]
+            if header_label:
+                header_label.text = f"{header_text} ({int(total_cal)} ккал)"
+
+            content = self.ids[f"{meal_type}_content"]
+            content.clear_widgets()
+
+            panel = self.ids[f"panel_{meal_type}"]
+            panel.disabled = (len(entries) == 0)
+
+            for entry in entries:
+                item = MDListItem()
+                item.add_widget(
+                    MDListItemHeadlineText(
+                        text=f"{entry.food_item.name} — {int(entry.grams)} г"
+                    )
+                )
+                item.add_widget(
+                    MDListItemSupportingText(
+                        text=f"{int(entry.calories)} ккал • "
+                        f"{int(entry.protein)} г б • "
+                        f"{int(entry.fat)} г ж • "
+                        f"{int(entry.carbs)} г у"
+                    )
+                )
+                action_box = MDBoxLayout(
+                    orientation="horizontal",
+                    spacing=dp(8),
+                    size_hint=(None, None),
+                    size=(dp(80), dp(48)),
+                    pos_hint={"center_y": 0.5}
+                )
+                edit_btn = TrailingDeleteIconButton(
+                    icon="pencil",
+                    theme_icon_color="Custom",
+                    icon_color=(0, 0, 0, 0.7),
+                    on_release=lambda x, e_id=entry.id: self.open_edit_entry(
+                        e_id)
+                )
+                delete_btn = TrailingDeleteIconButton(
+                    icon="delete",
+                    theme_icon_color="Custom",
+                    icon_color=(0.8, 0.2, 0.2, 1),
+                    on_release=lambda x, e_id=entry.id: self.delete_entry(e_id)
+                )
+                action_box.add_widget(edit_btn)
+                action_box.add_widget(delete_btn)
+                item.add_widget(action_box)
+                content.add_widget(item)
+
+    def delete_entry(self, entry_id: int):
+        """Удаляет запись из дневника и перезагружает данные."""
+        run_in_background(
+            lambda: delete_entry(entry_id),
+            on_success=lambda _: self.load_data(),
+            on_error=lambda e: print(f"Ошибка удаления: {e}")
         )
-        if mode == "barcode":
-            # Запускаем сканер и потом вызываем screen.fill_from_barcode()
-            self._open_barcode_scanner(screen)
-        self.manager.current = "add_food"
 
-    def _open_barcode_scanner(self, add_screen):
+    def open_edit_entry(self, entry_id: int):
+        """Открывает экран редактирования для указанной записи."""
+        if hasattr(self, "manager") and self.manager.has_screen("add_food"):
+            add_screen = self.manager.get_screen("add_food")
+            add_screen.open_for_edit(
+                entry_id=entry_id,
+                user_id=self.user.id if self.user else 1,
+                on_done=lambda entry: self.refresh()
+            )
+            self.manager.current = "add_food"
+
+    def refresh(self):
+        """Принудительная перезагрузка."""
+        self.load_data()
+
+    def tap_expansion_chevron(self, panel, chevron, meal_type):
+        """Обработчик нажатия на шеврон панели приёма пищи."""
+        if panel.disabled:
+            return
+        if not panel.is_open:
+            panel.open()
+            panel.set_chevron_down(chevron)
+        else:
+            panel.close()
+            panel.set_chevron_up(chevron)
+
+    def show_modal_date_picker(self, *args):
+        """Показывает календарь для выбора даты."""
+        date_dialog = MDModalDatePicker(scrim_color=(0, 0, 0, 1))
+        date_dialog.bind(on_edit=self.on_edit,
+                         on_ok=self.on_date_picker_ok,
+                         on_cancel=self.on_cancel)
+        date_dialog.open()
+
+    def show_modal_input_date_picker(self, *args):
+        """Показывает текстовый диалог ввода даты (резервный вариант)."""
+        date_dialog = MDModalInputDatePicker(scrim_color=(0, 0, 0, 1))
+        date_dialog.bind(
+            on_edit=self.on_edit,
+            on_ok=self.on_input_date_picker_ok,
+            on_cancel=self.on_cancel
+        )
+        date_dialog.open()
+
+    def on_date_picker_ok(self, instance_date_picker):
+        """Обработчик выбора даты из календаря."""
+        try:
+            selected_date = instance_date_picker.get_date()[0]
+            if selected_date:
+                self.load_data(selected_date)
+        except Exception as e:
+            print(f"Ошибка получения даты из календаря: {e}")
+        instance_date_picker.dismiss()
+
+    def on_input_date_picker_ok(self, instance_date_picker):
+        """Обработчик ввода даты вручную."""
+        try:
+            selected_date = instance_date_picker.get_date()[0]
+            if selected_date:
+                self.load_data(selected_date)
+            else:
+                raise ValueError("Не удалось распознать дату")
+        except Exception:
+            MDSnackbar(
+                MDSnackbarText(
+                    text="Неверный формат даты. Используйте ДД/ММ/ГГГГ"),
+                duration=2.5,
+                pos_hint={"center_x": 0.5, "center_y": 0.1},
+            ).open()
+            return
+        instance_date_picker.dismiss()
+
+    def on_edit(self, instance_date_picker):
+        """Переключение с графического календаря на текстовый ввод."""
+        instance_date_picker.dismiss()
+        Clock.schedule_once(self.show_modal_input_date_picker, 0.2)
+
+    def on_cancel(self, instance_date_picker):
+        instance_date_picker.dismiss()
+
+    def on_fab_pressed(self):
+        """Кнопка добавления пищи: открывает экран AddFoodScreen."""
+        if hasattr(self, "manager") and self.manager.has_screen("add_food"):
+            add_screen = self.manager.get_screen("add_food")
+            add_screen.open_for(
+                meal_key="breakfast",
+                user_id=self.user.id if self.user else 1,
+                on_done=lambda entry: self.refresh()
+            )
+            self.manager.current = "add_food"
+
+    def open_edit_profile_dialog(self):
+        """Переход на экран редактирования профиля."""
+        if hasattr(self, "manager") and self.manager.has_screen("edit_profile"):
+            self.menu_drawer.dismiss()
+            self.manager.current = "edit_profile"
+        else:
+            MDSnackbar(MDSnackbarText(
+                text="Экран редактирования не найден"), duration=2).open()
+
+    def confirm_delete_account(self):
+        """Диалог подтверждения удаления аккаунта."""
+        if not hasattr(self, 'delete_account_dialog'):
+            self.delete_account_dialog = MDDialog(
+                MDDialogHeadlineText(
+                    text="Подтверждение удаления", halign="left"),
+                MDDialogSupportingText(
+                    text="Вы уверены, что хотите удалить аккаунт? Это действие необратимо.",
+                    halign="left"),
+                MDDialogButtonContainer(
+                    Widget(),
+                    MDButton(MDButtonText(text="Отмена"), style="text",
+                             on_release=lambda x: self.delete_account_dialog.dismiss()),
+                    MDButton(MDButtonText(text="Удалить"), style="text",
+                             on_release=lambda x: self.delete_account()),
+                    spacing="8dp",
+                ),
+            )
+        self.delete_account_dialog.open()
+
+    def delete_account(self):
+        """Выполняет удаление пользователя и всей базы данных."""
+        if not self.user:
+            return
+        if hasattr(self, 'delete_account_dialog'):
+            self.delete_account_dialog.dismiss()
+
+        run_in_background(
+            lambda: delete_user_async(self.user.id),
+            on_success=lambda _: self._after_user_deleted(),
+            on_error=lambda e: MDSnackbar(MDSnackbarText(
+                text=f"Ошибка удаления: {e}"), duration=2).open()
+        )
+
+    def _after_user_deleted(self):
         """
-        Заглушка под камеру/штрихкод-сканер.
-        Реализуй через zbarcam / pyzbar / kivy Camera + ZBarSymbol.
-        После успешного сканирования вызови:
-            food = get_food_by_barcode(scanned_code)
-            if food:
-                add_screen.fill_from_barcode(food)
+        Вызывается после успешного удаления пользователя:
+        удаляем БД и переходим на онбординг.
         """
-        from kivymd.uix.snackbar import MDSnackbar, MDSnackbarText
-        MDSnackbar(
-            MDSnackbarText(text="Сканер штрихкода — в разработке"),
-            duration=2,
-            pos_hint={"center_x": 0.5, "center_y": 0.1},
-        ).open()
+        delete_database()
+        MDSnackbar(MDSnackbarText(text="Аккаунт и база данных удалены"),
+                   duration=2).open()
+        self.manager.current = "splash"
 
-    def _on_meal_add(self, meal_key: str):
-        self._active_meal_key = meal_key
-        self._open_sheet()
+    def on_account_deleted(self):
+        """После удаления аккаунта переходим на онбординг."""
+        MDSnackbar(MDSnackbarText(text="Аккаунт удалён"), duration=2).open()
+        self.manager.current = ""
 
-    def _on_entry_delete(self, entry_id: int):
-        from services.diary_service import delete_entry
+    def open_analysis(self):
+        """Переход на экран статистики."""
+        if hasattr(self, "manager") and self.manager.has_screen("analysis"):
+            self.menu_drawer.dismiss()
+            self.manager.current = "analysis"
+        else:
+            MDSnackbar(MDSnackbarText(
+                text="Экран анализа не найден"), duration=2).open()
 
-        def task():
-            return delete_entry(entry_id)
-
-        run_in_background(task, lambda _: self._load_diary())
-
-    def _on_food_added(self, entry):
-        """Вызывается после успешного добавления продукта."""
-        self._load_diary()
-
-    # ── Тема ──────────────────────────────────────────────────────── #
-    def toggle_theme(self):
-        from kivymd.app import MDApp
-        app = MDApp.get_running_app()
-        self._is_dark = not self._is_dark
-        app.theme_cls.theme_style = "Dark" if self._is_dark else "Light"
-        # обновляем фон экрана
-        self.md_bg_color = app.theme_cls.backgroundColor
-        # обновляем фон карточек
-        self.ids.calorie_card.md_bg_color = app.theme_cls.backgroundColor
-        self.ids.macro_card.md_bg_color = app.theme_cls.backgroundColor
-        self.ids.sheet.md_bg_color = app.theme_cls.backgroundColor
-
-    # ── Боковое меню (заглушка) ───────────────────────────────────── #
-    def open_drawer(self):
+    def toggle_nav_drawer(self):
         """
-        Подключи MDNavigationDrawer в main.py и вызывай его здесь.
-        Например: app.root.ids.nav_drawer.set_state("open")
+        Открывает/закрывает боковое меню
+        (через выпадающее меню, так как навигационный ящик в KV уже есть).
         """
-        from kivymd.uix.snackbar import MDSnackbar, MDSnackbarText
-        MDSnackbar(
-            MDSnackbarText(text="Боковое меню — в разработке"),
-            duration=1.5,
-            pos_hint={"center_x": 0.5, "center_y": 0.1},
-        ).open()
+        if hasattr(self, 'menu_drawer'):
+            self.menu_drawer.dismiss()
+        menu_items = [
+            {"text": "Изменить профиль",
+                "on_release": lambda: self.open_edit_profile_dialog()},
+            {"text": "Анализ", "on_release": lambda: self.open_analysis()},
+            {"text": "Удалить аккаунт",
+                "on_release": lambda: self.confirm_delete_account()},
+        ]
+        self.menu_drawer = MDDropdownMenu(
+            caller=self.ids.get('menu_button', None),
+            items=menu_items,
+            position="auto",
+        )
+        self.menu_drawer.open()

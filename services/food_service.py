@@ -1,10 +1,18 @@
-from sqlalchemy.orm import Session
+"""
+Сервис для работы с продуктами: поиск, добавление
+"""
+
 from database.models import FoodItem
 from database.engine import get_session
 from schemas.schemas import FoodItemCreate
+from typing import Optional
 
 
 def search_food(query: str, limit: int = 10) -> list[FoodItem]:
+    """
+    Поиск продуктов по названию
+    (регистронезависимый, частичное совпадение).
+    """
     session = get_session()
     try:
         q = query.strip().lower()
@@ -18,6 +26,10 @@ def search_food(query: str, limit: int = 10) -> list[FoodItem]:
 
 
 def add_food(data: FoodItemCreate) -> FoodItem:
+    """
+    Добавляет новый продукт в базу
+    (обычно кастомный, созданный пользователем).
+    """
     session = get_session()
     try:
         item = FoodItem(
@@ -27,7 +39,6 @@ def add_food(data: FoodItemCreate) -> FoodItem:
             protein=data.protein,
             fat=data.fat,
             carbs=data.carbs,
-            barcode=data.barcode,
             is_custom=data.is_custom,
             source="user" if data.is_custom else "parsed",
         )
@@ -42,9 +53,10 @@ def add_food(data: FoodItemCreate) -> FoodItem:
         session.close()
 
 
-def get_food_by_barcode(barcode: str) -> FoodItem | None:
+def get_food_item(food_id: int) -> Optional[FoodItem]:
+    """Возвращает продукт по ID."""
     session = get_session()
     try:
-        return session.query(FoodItem).filter_by(barcode=barcode).first()
+        return session.query(FoodItem).filter_by(id=food_id).first()
     finally:
         session.close()

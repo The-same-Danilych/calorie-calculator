@@ -1,3 +1,5 @@
+"""Виджет прогресс-бара, используемый в верхней части экранов онбординга."""
+
 from kivy.lang import Builder
 from kivy.uix.boxlayout import BoxLayout
 from kivy.properties import NumericProperty
@@ -8,7 +10,6 @@ KV = """
     size_hint_y: None
     height: dp(40)
     padding: [dp(16), dp(24), dp(16), 0]
-
     MDExLinearProgressIndicator:
         id: progress
         size_hint_x: 1
@@ -26,11 +27,17 @@ Builder.load_string(KV)
 
 
 class ProgressBarHeader(BoxLayout):
+    """Прогресс-бар, отображающий текущий шаг онбординга."""
     value = NumericProperty(0)
 
-    def set_value(self, value: float, animated: bool = True, duration: float = 0.5):
+    def set_value(self, value: float,
+                  animated: bool = True,
+                  duration: float = 0.5):
+        """
+        Устанавливает значение прогресса.
+        Если animated=True, анимирует изменение.
+        """
         progress_bar = self.ids.progress
-
         if animated:
             Animation.cancel_all(progress_bar)
             anim = Animation(value=value, duration=duration, t="out_cubic")

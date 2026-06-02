@@ -1,3 +1,5 @@
+"""Компонент выбора возраста: всплывающий поппер с прокручиваемым списком."""
+
 from kivy.lang import Builder
 from kivy.clock import Clock
 from kivy.metrics import dp
@@ -8,6 +10,7 @@ from kivy.uix.recycleview.views import RecycleDataViewBehavior
 from kivy.properties import StringProperty
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDButton, MDButtonText
+from ui.onboarding.screens.progress_bar import ProgressBarHeader
 
 KV_AGE_PICKER = '''
 <SelectableRecycleButton>:
@@ -31,6 +34,7 @@ Builder.load_string(KV_AGE_PICKER)
 
 
 class SelectableRecycleButton(RecycleDataViewBehavior, MDBoxLayout):
+    """Отдельный элемент списка возрастов (кнопка)."""
     text = StringProperty()
 
     def __init__(self, **kwargs):
@@ -48,6 +52,10 @@ class SelectableRecycleButton(RecycleDataViewBehavior, MDBoxLayout):
         self.add_widget(self.button)
 
     def on_select(self, *args):
+        """
+        При нажатии на кнопку передаём
+        выбранное значение родительскому RV.
+        """
         parent = self.parent
         while parent:
             if hasattr(parent, 'select_item'):
@@ -56,6 +64,7 @@ class SelectableRecycleButton(RecycleDataViewBehavior, MDBoxLayout):
             parent = getattr(parent, 'parent', None)
 
     def refresh_view_attrs(self, rv, index, data):
+        """Обновляет текст кнопки при переиспользовании представления."""
         self.text = data['text']
         if self.button.children:
             self.button.children[0].text = self.text
@@ -63,17 +72,22 @@ class SelectableRecycleButton(RecycleDataViewBehavior, MDBoxLayout):
 
 
 class AgeRecycleView(RecycleView):
+    """RecycleView для отображения списка возрастов."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.bar_width = 0
         self.do_scroll_x = False
 
     def select_item(self, value):
+        """Оповещает родительский поппер о выбранном возрасте."""
         if hasattr(self, 'parent_popup'):
             self.parent_popup.select_age(value)
 
 
 class AgePickerPopup(Popup):
+    """Всплывающее окно для выбора возраста."""
+
     def __init__(self, callback=None, **kwargs):
         super().__init__(**kwargs)
         self.callback = callback
@@ -82,22 +96,20 @@ class AgePickerPopup(Popup):
         self.auto_dismiss = True
         self.background = ""
         self.background_color = (1, 1, 1, 1)
-
         self._snap_event = None
         self._create_ui()
 
     def _create_ui(self):
+        """Создаёт интерфейс: RecycleView + кнопка отмены."""
         root = MDBoxLayout(
             orientation="vertical",
             spacing=dp(12),
             padding=dp(16),
         )
-
         years = [{'text': str(i)} for i in range(15, 121)]
         self.rv = AgeRecycleView()
         self.rv.parent_popup = self
         self.rv.data = years
-
         self.rv.bind(scroll_y=self.on_scroll)
 
         footer = MDBoxLayout(size_hint_y=None, height=dp(56))
@@ -121,11 +133,13 @@ class AgePickerPopup(Popup):
         self.content = root
 
     def on_scroll(self, instance, value):
+        """При прокрутке планируем снэп (прилипание) к ближайшему элементу."""
         if self._snap_event:
             self._snap_event.cancel()
         self._snap_event = Clock.schedule_once(self.snap_to_nearest, 0.15)
 
     def snap_to_nearest(self, *args):
+        """Прилипает к ближайшему значению в списке."""
         total = len(self.rv.data)
         if total == 0:
             return
@@ -133,15 +147,21 @@ class AgePickerPopup(Popup):
         index = round((1 - scroll_y) * (total - 1))
         index = max(0, min(index, total - 1))
         target_y = 1 - (index / (total - 1))
-        Animation(scroll_y=target_y, duration=0.15,
+        Animation(scroll_y=target_y,
+                  duration=0.15,
                   t='out_quad').start(self.rv)
 
     def select_age(self, age):
+        """
+        Вызывается при выборе возраста:
+        закрывает поппер и вызывает callback.
+        """
         self.dismiss()
         if self.callback:
             self.callback(age)
 
     def on_dismiss(self):
+        """Отменяет запланированный снэп при закрытии."""
         if self._snap_event:
             self._snap_event.cancel()
         if hasattr(self, 'rv') and self.rv:

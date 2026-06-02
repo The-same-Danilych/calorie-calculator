@@ -1,8 +1,10 @@
-# ui/onboarding/screens/goal.py
+"""Экран выбора цели (снижение/поддержание/набор массы)."""
+
 from kivy.lang import Builder
 from kivy.properties import ObjectProperty
 from kivy.metrics import dp
 from ui.onboarding.screens.base import OnboardingStepScreen
+from ui.onboarding.screens.progress_bar import ProgressBarHeader
 
 KV_GOAL = """
 <GoalScreen>:
@@ -21,7 +23,6 @@ KV_GOAL = """
             orientation: "vertical"
             size_hint_y: None
             height: dp(56)
-            
             MDIconButton:
                 icon: "arrow-left"
                 pos_hint: {"x": 0, "top": 1}
@@ -35,7 +36,6 @@ KV_GOAL = """
             orientation: "vertical"
             adaptive_height: True
             spacing: dp(20)
-
             MDLabel:
                 text: "Ваша цель"
                 font_style: "Display"
@@ -45,7 +45,6 @@ KV_GOAL = """
                 text_color: (0, 0, 0, 1)
                 size_hint_y: None
                 height: self.texture_size[1]
-
             MDLabel:
                 text: "Чего вы хотите достичь?"
                 font_style: "Body"
@@ -64,28 +63,23 @@ KV_GOAL = """
             height: dp(200)
             pos_hint: {"center_x": 0.5}
             padding: dp(16), 0
-
             MDSegmentedButton:
                 id: goal_selector
                 size_hint_x: 1
                 size_hint_y: None
                 height: dp(48)
-                
                 MDSegmentedButtonItem:
                     id: lose_item
                     text: "Сбросить вес"
                     on_release: root.on_goal_selected("lose")
-                
                 MDSegmentedButtonItem:
                     id: maintain_item
                     text: "Поддерживать"
                     on_release: root.on_goal_selected("maintain")
-                
                 MDSegmentedButtonItem:
                     id: gain_item
                     text: "Набрать массу"
                     on_release: root.on_goal_selected("gain")
-
             MDBoxLayout:
                 id: info_card
                 orientation: "vertical"
@@ -94,7 +88,6 @@ KV_GOAL = """
                 padding: dp(16), dp(12)
                 md_bg_color: (0.95, 0.95, 0.95, 1)
                 radius: [dp(12), dp(12), dp(12), dp(12)]
-
                 MDLabel:
                     id: goal_title
                     text: ""
@@ -104,7 +97,6 @@ KV_GOAL = """
                     height: dp(28)
                     theme_text_color: "Custom"
                     text_color: (0, 0, 0, 1)
-
                 MDLabel:
                     id: goal_desc
                     text: ""
@@ -129,7 +121,6 @@ KV_GOAL = """
             md_bg_color: (0, 0, 0, 1)
             disabled: True
             on_release: root.finish_onboarding()
-            
             MDButtonText:
                 text: "Завершить"
                 theme_text_color: "Custom"
@@ -140,6 +131,7 @@ Builder.load_string(KV_GOAL)
 
 
 class GoalScreen(OnboardingStepScreen):
+    """Экран выбора цели: похудение, поддержание, набор массы."""
     flow = ObjectProperty(None)
     show_progress = True
     selected_goal = None
@@ -167,30 +159,23 @@ class GoalScreen(OnboardingStepScreen):
         self.ids.next_btn.disabled = False
 
     def _set_goal_selector(self):
-        """Синхронно устанавливает выбранную цель в сегментированной кнопке"""
+        """Устанавливает активный элемент сегментированной кнопки."""
         items = {
             "lose": self.ids.lose_item,
             "maintain": self.ids.maintain_item,
             "gain": self.ids.gain_item
         }
-        
         for goal_value, item in items.items():
-            if self.selected_goal == goal_value:
-                if hasattr(item, 'active'):
-                    item.active = True
-                if hasattr(item, 'set_selected'):
-                    item.set_selected(True)
-            else:
-                if hasattr(item, 'active'):
-                    item.active = False
-                if hasattr(item, 'set_selected'):
-                    item.set_selected(False)
+            active = (self.selected_goal == goal_value)
+            if hasattr(item, 'active'):
+                item.active = active
+            if hasattr(item, 'set_selected'):
+                item.set_selected(active)
 
     def _update_info_card(self):
-        """Обновляет карточку информации о выбранной цели"""
+        """Обновляет текстовое описание выбранной цели."""
         if not self.selected_goal or self.selected_goal not in self.GOALS:
             return
-
         info = self.GOALS[self.selected_goal]
         self.ids.goal_title.text = info["title"]
         self.ids.goal_desc.text = info["desc"]
@@ -213,7 +198,7 @@ class GoalScreen(OnboardingStepScreen):
             self.flow.data["goal"] = self.selected_goal
 
     def finish_onboarding(self):
-        """Завершает онбординг и сохраняет данные пользователя"""
+        """Завершает онбординг и сохраняет данные пользователя."""
         if self.flow:
             error = self.validate()
             if error:

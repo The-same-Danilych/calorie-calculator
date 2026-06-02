@@ -1,11 +1,13 @@
+"""Экран выбора физической активности во время онбординга."""
+
 from kivy.lang import Builder
 from kivy.properties import ObjectProperty
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.label import MDLabel
-from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.selectioncontrol import MDCheckbox
 from kivy.metrics import dp
 from ui.onboarding.screens.base import OnboardingStepScreen
+from ui.onboarding.screens.progress_bar import ProgressBarHeader
 
 KV_ACTIVITY = """
 <ActivityScreen>:
@@ -24,7 +26,6 @@ KV_ACTIVITY = """
             orientation: "vertical"
             size_hint_y: None
             height: dp(56)
-            
             MDIconButton:
                 icon: "arrow-left"
                 pos_hint: {"x": 0, "top": 1}
@@ -38,7 +39,6 @@ KV_ACTIVITY = """
             orientation: "vertical"
             adaptive_height: True
             spacing: dp(20)
-
             MDLabel:
                 text: "Ваша физическая активность"
                 font_style: "Display"
@@ -48,7 +48,6 @@ KV_ACTIVITY = """
                 text_color: (0, 0, 0, 1)
                 size_hint_y: None
                 height: self.texture_size[1]
-
             MDLabel:
                 text: "Выберите уровень, который лучше всего описывает ваш образ жизни"
                 font_style: "Body"
@@ -66,7 +65,6 @@ KV_ACTIVITY = """
             bar_width: dp(4)
             bar_color: (0, 0, 0, 0.3)
             bar_inactive_color: (0, 0, 0, 0.1)
-
             MDBoxLayout:
                 id: buttons_container
                 orientation: "vertical"
@@ -86,7 +84,6 @@ KV_ACTIVITY = """
             md_bg_color: (0, 0, 0, 1)
             disabled: True
             on_release: root.go_next()
-            
             MDButtonText:
                 text: "Продолжить"
                 theme_text_color: "Custom"
@@ -97,6 +94,7 @@ Builder.load_string(KV_ACTIVITY)
 
 
 class ActivityScreen(OnboardingStepScreen):
+    """Экран выбора уровня физической активности."""
     flow = ObjectProperty(None)
     show_progress = True
     selected_activity = None
@@ -110,6 +108,10 @@ class ActivityScreen(OnboardingStepScreen):
     }
 
     def on_enter(self):
+        """
+        При входе создаём список вариантов
+        и восстанавливаем сохранённое значение.
+        """
         super().on_enter()
         self._create_activity_list()
         saved = self.flow.data.get("activity", "moderate")
@@ -119,9 +121,12 @@ class ActivityScreen(OnboardingStepScreen):
             self.ids.next_btn.disabled = False
 
     def _create_activity_list(self):
+        """
+        Динамически создаёт чекбоксы
+        с подписями для каждого уровня активности.
+        """
         container = self.ids.buttons_container
         container.clear_widgets()
-
         for value, text in self.ACTIVITIES.items():
             row = MDBoxLayout(
                 orientation="horizontal",
@@ -130,7 +135,6 @@ class ActivityScreen(OnboardingStepScreen):
                 spacing=dp(12),
                 padding=[dp(8), dp(8), dp(8), dp(8)]
             )
-            
             checkbox = MDCheckbox(
                 size_hint=(None, None),
                 size=(dp(48), dp(48)),
@@ -139,7 +143,6 @@ class ActivityScreen(OnboardingStepScreen):
                 group="activity_group",
                 on_release=lambda x, v=value: self.on_activity_selected(v)
             )
-            
             label = MDLabel(
                 text=text,
                 markup=True,
@@ -151,27 +154,31 @@ class ActivityScreen(OnboardingStepScreen):
                 halign="left",
                 valign="center"
             )
-            
             row.add_widget(checkbox)
             row.add_widget(label)
             container.add_widget(row)
 
     def _set_selected_checkbox(self, value: str):
-        """Устанавливает галочку на нужном чекбоксе"""
+        """
+        Устанавливает активный чекбокс в соответствии
+        с выбранным значением.
+        """
         container = self.ids.buttons_container
-        for i, row in enumerate(container.children[::-1]):  # Обратный порядок
-            if i < len(self.ACTIVITIES):
+        keys = list(self.ACTIVITIES.keys())
+        for i, row in enumerate(container.children[::-1]):
+            if i < len(keys):
                 checkbox = row.children[1] if len(row.children) > 1 else None
                 if checkbox and isinstance(checkbox, MDCheckbox):
-                    checkbox.active = (list(self.ACTIVITIES.keys())[i] == value)
+                    checkbox.active = (keys[i] == value)
 
     def on_activity_selected(self, value: str):
+        """Обработчик выбора уровня активности."""
         self.selected_activity = value
-        # Сохраняем в flow
         self.save_to_flow()
         self.ids.next_btn.disabled = False
 
     def validate(self) -> str | None:
+        """Проверяет, что выбран корректный уровень."""
         if not self.selected_activity:
             return "Выберите уровень физической активности"
         if self.selected_activity not in self.ACTIVITIES:
@@ -179,10 +186,12 @@ class ActivityScreen(OnboardingStepScreen):
         return None
 
     def save_to_flow(self):
+        """Сохраняет выбранный уровень в общий словарь данных."""
         if self.flow and self.selected_activity:
             self.flow.data["activity"] = self.selected_activity
 
     def go_next(self):
+        """Переход к следующему шагу после валидации."""
         if self.flow:
             error = self.validate()
             if error:
@@ -192,5 +201,6 @@ class ActivityScreen(OnboardingStepScreen):
             self.flow.go_next()
 
     def go_back(self):
+        """Возврат к предыдущему шагу."""
         if self.flow:
             self.flow.go_back()

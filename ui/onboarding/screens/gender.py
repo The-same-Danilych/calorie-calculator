@@ -1,7 +1,8 @@
+"""Экран выбора пола пользователя."""
+
 from kivy.lang import Builder
 from kivy.properties import ObjectProperty
 from ui.onboarding.screens.base import OnboardingStepScreen
-from kivy.animation import Animation
 from ui.onboarding.screens.progress_bar import ProgressBarHeader
 
 KV_GENDER = """
@@ -21,7 +22,6 @@ KV_GENDER = """
             orientation: "vertical"
             size_hint_y: None
             height: dp(56)
-            
             MDIconButton:
                 icon: "arrow-left"
                 pos_hint: {"x": 0, "top": 1}
@@ -35,7 +35,6 @@ KV_GENDER = """
             orientation: "vertical"
             adaptive_height: True
             spacing: dp(40)
-
             MDLabel:
                 text: "Ваш пол"
                 font_style: "Display"
@@ -45,20 +44,16 @@ KV_GENDER = """
                 text_color: (0, 0, 0, 1)
                 size_hint_y: None
                 height: self.texture_size[1]
-
             MDBoxLayout:
                 orientation: "vertical"
                 adaptive_height: True
                 spacing: dp(16)
                 pos_hint: {"center_x": 0.5}
-
-                # Мужской
                 MDBoxLayout:
                     orientation: "horizontal"
                     adaptive_height: True
                     spacing: dp(16)
                     size_hint_x: 1
-                    
                     MDCheckbox:
                         id: male_checkbox
                         group: "gender_group"
@@ -67,7 +62,6 @@ KV_GENDER = """
                         color_active: (0, 0, 0, 1)
                         color_inactive: (0, 0, 0, 0.54)
                         on_active: root.on_gender_selected("male", self.active)
-                    
                     MDLabel:
                         text: "Мужской"
                         font_style: "Body"
@@ -76,14 +70,11 @@ KV_GENDER = """
                         adaptive_height: True
                         pos_hint: {"center_y": 0.5}
                         theme_text_color: "Primary"
-
-                # Женский
                 MDBoxLayout:
                     orientation: "horizontal"
                     adaptive_height: True
                     spacing: dp(16)
                     size_hint_x: 1
-                    
                     MDCheckbox:
                         id: female_checkbox
                         group: "gender_group"
@@ -92,7 +83,6 @@ KV_GENDER = """
                         color_active: (0, 0, 0, 1)
                         color_inactive: (0, 0, 0, 0.54)
                         on_active: root.on_gender_selected("female", self.active)
-                    
                     MDLabel:
                         text: "Женский"
                         font_style: "Body"
@@ -116,7 +106,6 @@ KV_GENDER = """
             md_bg_color: (0, 0, 0, 1)
             disabled: True
             on_release: root.go_next()
-            
             MDButtonText:
                 text: "Продолжить"
                 theme_text_color: "Custom"
@@ -127,6 +116,7 @@ Builder.load_string(KV_GENDER)
 
 
 class GenderScreen(OnboardingStepScreen):
+    """Экран выбора пола (мужской/женский)."""
     flow = ObjectProperty(None)
     show_progress = True
     selected_gender = None
@@ -134,7 +124,6 @@ class GenderScreen(OnboardingStepScreen):
     def on_enter(self):
         super().on_enter()
         self.update_progress()
-
         if self.flow and self.flow.data.get("gender"):
             self.selected_gender = self.flow.data["gender"]
             if self.selected_gender == "male":
@@ -144,6 +133,7 @@ class GenderScreen(OnboardingStepScreen):
             self.ids.continue_btn.disabled = False
 
     def on_gender_selected(self, gender: str, is_active: bool):
+        """Обработчик выбора пола."""
         if is_active:
             self.selected_gender = gender
             self.ids.continue_btn.disabled = False

@@ -1,9 +1,12 @@
+"""Pydantic‑схемы для валидации данных, поступающих от пользователя."""
+
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from database.models import GoalType, ActivityLevel
 
 
 class UserCreate(BaseModel):
+    """Схема для создания/обновления пользователя."""
     name:       str = Field(..., min_length=1, max_length=100)
     gender:     str = Field(..., pattern="^(male|female)$")
     years:      int = Field(..., ge=15, le=120)
@@ -19,12 +22,12 @@ class UserCreate(BaseModel):
 
 
 class FoodItemCreate(BaseModel):
+    """Схема для добавления продукта."""
     name:      str = Field(..., min_length=1, max_length=255)
     calories:  float = Field(..., ge=0, le=9000)
     protein:   float = Field(default=0.0, ge=0, le=100)
     fat:       float = Field(default=0.0, ge=0, le=100)
     carbs:     float = Field(default=0.0, ge=0, le=100)
-    barcode:   Optional[str] = None
     is_custom: bool = False
 
     @field_validator("name")
@@ -44,6 +47,15 @@ class FoodItemCreate(BaseModel):
 
 
 class DiaryEntryCreate(BaseModel):
+    """Схема для добавления записи в дневник."""
     food_item_id: int
     grams:        float = Field(..., gt=0, le=5000)
     meal_type:    str = Field(..., pattern="^(breakfast|lunch|dinner|snack)$")
+
+
+class DiaryEntryUpdate(BaseModel):
+    """Схема для обновления записи дневника."""
+    grams: Optional[float] = Field(None, gt=0, le=5000)
+    meal_type: Optional[str] = Field(
+        None, pattern="^(breakfast|lunch|dinner|snack)$")
+    food_data: Optional[FoodItemCreate] = None

@@ -1,8 +1,8 @@
+"""Главный экран онбординга — управляет последовательностью шагов."""
+
 from kivymd.uix.screen import MDScreen
 from kivy.uix.screenmanager import SlideTransition
 from kivy.lang import Builder
-from kivy.properties import ObjectProperty
-from typing import Optional, Dict, Any
 
 KV = """
 <OnboardingFlow>:
@@ -14,9 +14,9 @@ Builder.load_string(KV)
 
 
 class OnboardingFlow(MDScreen):
+    """Контейнер для всех шагов онбординга."""
     STEPS: tuple = ("greeting", "step_name", "step_gender", "step_birth",
                     "step_body", "step_activity", "step_goal")
-    data = ObjectProperty({})
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -31,6 +31,9 @@ class OnboardingFlow(MDScreen):
         }
 
     def on_kv_post(self, base_widget):
+        """После загрузки KV создаём все экраны-шаги
+            и добавляем их во внутренний ScreenManager.
+        """
         from ui.onboarding.screens.greetings import GreetingScreen
         from ui.onboarding.screens.name import NameScreen
         from ui.onboarding.screens.gender import GenderScreen
@@ -59,16 +62,18 @@ class OnboardingFlow(MDScreen):
         inner.current = "greeting"
 
     def update_progress_for_current_screen(self):
+        """Обновляет прогресс-бар текущего шага 
+            (если у экрана есть метод update_progress).
+        """
         inner = self.ids.inner_manager
-        current_screen = inner.current_screen
-
         if inner.current == "greeting":
             return
-
+        current_screen = inner.current_screen
         if hasattr(current_screen, 'update_progress'):
             current_screen.update_progress()
 
     def go_next(self):
+        """Переход к следующему шагу."""
         inner = self.ids.inner_manager
         current_screen = inner.current_screen
 
@@ -83,9 +88,9 @@ class OnboardingFlow(MDScreen):
             self.update_progress_for_current_screen()
 
     def go_back(self):
+        """Возврат к предыдущему шагу."""
         inner = self.ids.inner_manager
         current_screen = inner.current_screen
-
         if hasattr(current_screen, '_skip_validation'):
             current_screen._skip_validation = True
 
@@ -96,6 +101,9 @@ class OnboardingFlow(MDScreen):
             self.update_progress_for_current_screen()
 
     def finish(self):
+        """Завершение онбординга: сохранение пользователя 
+            и переход на домашний экран.
+        """
         from schemas.schemas import UserCreate
         from services.user_service import create_or_update_user_async
 
@@ -115,11 +123,14 @@ class OnboardingFlow(MDScreen):
             **self.data), on_success, on_error)
 
     def current_step_index(self) -> int:
+        """Индекс текущего шага
+            (начиная с 0, без учёта приветственного экрана).
+        """
         inner = self.ids.inner_manager
         if inner.current == "greeting":
             return 0
-        idx = self.STEPS.index(inner.current)
-        return idx
+        return self.STEPS.index(inner.current)
 
     def total_steps(self) -> int:
+        """Общее количество шагов (без приветственного)."""
         return len(self.STEPS) - 1
