@@ -10,7 +10,7 @@ source.include_patterns = assets/*,database/*,ui/*,services/*,utils/*,schemas/*
 
 version = 1.0.0
 
-requirements = python3,kivy==2.3.1,https://github.com/kivymd/KivyMD/archive/master.zip,sqlalchemy,pydantic,typing_extensions,pillow
+requirements = python3,kivy==2.3.1,kivymd==2.0.1dev,sqlalchemy,pydantic,typing_extensions,pillow
 
 icon.filename = assets/images/icon.png
 
