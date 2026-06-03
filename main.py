@@ -25,6 +25,7 @@ class CalorieApp(MDApp):
         """Инициализирует и возвращает корневой виджет — ScreenManager 
                             со всеми экранами.
         """
+        self.title = "Трекеры БЖУ"
         self._configure_window_size()
         sm = self._create_screen_manager()
         self._add_screens(sm)
