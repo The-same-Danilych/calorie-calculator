@@ -38,7 +38,6 @@ LOG_FILE = STORAGE_DIR / "app.log"
 
 ASSETS_DIR = BASE_DIR / "assets"
 IMAGES_DIR = ASSETS_DIR / "images"
-FONTS_DIR = ASSETS_DIR / "fonts"
 
 SEED_FILE = BASE_DIR / "database" / "seed_data" / "initial_food.json"
 
